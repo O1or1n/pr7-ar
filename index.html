@@ -8,6 +8,9 @@
   <script src="https://aframe.io/releases/1.5.0/aframe.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image-aframe.prod.js"></script>
 
+  <!-- ДОБАВИЛ: animation-mixer (aframe-extras) для проигрывания анимаций из .glb/.gltf -->
+  <script src="https://cdn.jsdelivr.net/gh/donmccurdy/aframe-extras@v6.1.1/dist/aframe-extras.min.js"></script>
+
   <style>
     :root {
       --glass: rgba(0,0,0,.45);
@@ -178,6 +181,7 @@
     #ui.found #reticleWrap { opacity: .25; }
     #ui.found #scanLine { opacity: .0; animation: none; }
 
+    /* На всякий: принудительно прозрачный фон канваса */
     a-scene, a-scene canvas { background: transparent !important; }
   </style>
 </head>
@@ -220,13 +224,13 @@
   </div>
 
   <a-scene
-  mindar-image="imageTargetSrc: targets.mind; autoStart: true; uiScanning: false; uiLoading: false;"
-  color-space="sRGB"
-  background="transparent: true"
-  renderer="alpha: true; colorManagement: true; physicallyCorrectLights: true;"
-  vr-mode-ui="enabled: false"
-  device-orientation-permission-ui="enabled: true"
->
+    mindar-image="imageTargetSrc: targets.mind; autoStart: true; uiScanning: false; uiLoading: false;"
+    color-space="sRGB"
+    background="transparent: true"
+    renderer="alpha: true; colorManagement: true; physicallyCorrectLights: true;"
+    vr-mode-ui="enabled: false"
+    device-orientation-permission-ui="enabled: true"
+  >
     <a-camera position="0 0 0" look-controls="enabled: false"></a-camera>
 
     <a-entity light="type: ambient; intensity: 0.9"></a-entity>
@@ -236,6 +240,7 @@
       <a-entity
         id="object"
         gltf-model="url(model.glb)"
+        animation-mixer="loop: repeat; timeScale: 1"
         position="0 0 0"
         rotation="0 0 0"
         scale="0.35 0.35 0.35"
@@ -253,7 +258,7 @@
     const markerRoot = document.getElementById("markerRoot");
     const obj = document.getElementById("object");
 
-    // События MindAR: targetFound / targetLost :contentReference[oaicite:2]{index=2}
+    // События MindAR: targetFound / targetLost
     markerRoot.addEventListener("targetFound", () => {
       chip.textContent = "Маркер распознан ✅";
       dot.classList.remove("bad");
@@ -291,7 +296,6 @@
 
     const MOVE_FACTOR = 0.0015;
 
-    // Чуть надёжнее для iOS: passive:false + preventDefault, чтобы страница не пыталась скроллиться/зумиться
     document.addEventListener("touchstart", (e) => {
       if (!obj) return;
 
@@ -350,5 +354,3 @@
   </script>
 </body>
 </html>
-
-
