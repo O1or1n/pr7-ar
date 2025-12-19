@@ -6,49 +6,214 @@
   <title>Практика №7 — WebAR на A-Frame (MindAR)</title>
 
   <script src="https://aframe.io/releases/1.5.0/aframe.min.js"></script>
-
   <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image-aframe.prod.js"></script>
 
   <style>
-    html, body { margin: 0; height: 100%; overflow: hidden; background: #000; font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial; }
-    #overlay {
-      position: fixed; inset: 0;
-      display: flex; align-items: center; justify-content: center;
-      padding: 16px;
-      pointer-events: none;
+    :root {
+      --glass: rgba(0,0,0,.45);
+      --glass2: rgba(0,0,0,.30);
+      --stroke: rgba(255,255,255,.18);
+      --text: rgba(255,255,255,.92);
+      --muted: rgba(255,255,255,.72);
     }
-    #hint {
+
+    html, body {
+      margin: 0;
+      height: 100%;
+      overflow: hidden;
+      background: #000;
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+    }
+
+    /* Оверлей: НЕ блокирует жесты по сцене */
+    #ui {
+      position: fixed;
+      inset: 0;
+      z-index: 10;
       pointer-events: none;
-      color: #fff;
-      background: rgba(0,0,0,.55);
-      border: 1px solid rgba(255,255,255,.2);
+      color: var(--text);
+
+      /* Safe-area для iPhone */
+      padding-top: env(safe-area-inset-top);
+      padding-bottom: env(safe-area-inset-bottom);
+      padding-left: env(safe-area-inset-left);
+      padding-right: env(safe-area-inset-right);
+
+      display: grid;
+      grid-template-rows: auto 1fr auto;
+      gap: 14px;
+    }
+
+    /* Верхняя плашка */
+    #topbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 14px 14px 0 14px;
+    }
+
+    #title {
+      display: grid;
+      gap: 2px;
+    }
+    #title b { font-size: 14px; letter-spacing: .2px; }
+    #title span { font-size: 12px; color: var(--muted); }
+
+    #statusPill {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 10px;
+      border-radius: 999px;
+      background: var(--glass);
+      border: 1px solid var(--stroke);
+      backdrop-filter: blur(8px);
+      -webkit-backdrop-filter: blur(8px);
+      font-size: 12px;
+      color: var(--muted);
+      max-width: 62vw;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .dot {
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      background: rgba(255,255,255,.35);
+      box-shadow: 0 0 0 6px rgba(255,255,255,.06);
+    }
+    .dot.ok { background: rgba(120, 255, 180, .85); box-shadow: 0 0 0 6px rgba(120, 255, 180, .12); }
+    .dot.bad { background: rgba(255, 180, 120, .85); box-shadow: 0 0 0 6px rgba(255, 180, 120, .12); }
+
+    /* Центр: “прицел” для маркера */
+    #center {
+      display: grid;
+      place-items: center;
+      padding: 0 14px;
+    }
+
+    #reticleWrap {
+      width: min(70vw, 320px);
+      aspect-ratio: 1 / 1;
+      position: relative;
+      border-radius: 22px;
+      background: linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.02));
+      border: 1px solid var(--stroke);
+      backdrop-filter: blur(6px);
+      -webkit-backdrop-filter: blur(6px);
+    }
+
+    /* “уголки” рамки */
+    .corner {
+      position: absolute;
+      width: 34px; height: 34px;
+      border: 2px solid rgba(255,255,255,.55);
       border-radius: 14px;
+      opacity: .85;
+    }
+    .c1 { top: 10px; left: 10px; border-right: none; border-bottom: none; }
+    .c2 { top: 10px; right: 10px; border-left: none; border-bottom: none; }
+    .c3 { bottom: 10px; left: 10px; border-right: none; border-top: none; }
+    .c4 { bottom: 10px; right: 10px; border-left: none; border-top: none; }
+
+    /* “скан-линия” */
+    #scanLine {
+      position: absolute;
+      left: 12px; right: 12px;
+      top: 16px;
+      height: 2px;
+      background: linear-gradient(90deg, transparent, rgba(120,255,180,.9), transparent);
+      opacity: .9;
+      filter: drop-shadow(0 0 10px rgba(120,255,180,.35));
+      animation: scan 2.2s ease-in-out infinite;
+    }
+    @keyframes scan {
+      0%   { transform: translateY(0); opacity: .55; }
+      50%  { transform: translateY(calc(min(70vw, 320px) - 60px)); opacity: 1; }
+      100% { transform: translateY(0); opacity: .55; }
+    }
+
+    /* Нижняя карточка подсказок */
+    #bottom {
+      padding: 0 14px 14px 14px;
+      display: grid;
+      place-items: center;
+    }
+
+    #card {
+      width: min(92vw, 560px);
+      border-radius: 18px;
       padding: 12px 14px;
-      text-align: center;
-      max-width: 520px;
+      background: var(--glass2);
+      border: 1px solid var(--stroke);
+      backdrop-filter: blur(8px);
+      -webkit-backdrop-filter: blur(8px);
+    }
+
+    #card b { font-size: 13px; }
+    #card .row {
+      margin-top: 8px;
+      display: grid;
+      gap: 6px;
+      color: var(--muted);
+      font-size: 13px;
       line-height: 1.35;
     }
-    #chip {
-      margin-top: 10px;
+
+    .kbd {
       display: inline-block;
-      font-size: 12px;
-      opacity: .9;
-      padding: 6px 10px;
+      padding: 2px 8px;
       border-radius: 999px;
-      background: rgba(255,255,255,.14);
-      border: 1px solid rgba(255,255,255,.2);
+      background: rgba(255,255,255,.12);
+      border: 1px solid rgba(255,255,255,.18);
+      font-size: 12px;
+      color: rgba(255,255,255,.82);
+      transform: translateY(-1px);
     }
+
+    /* Скрываем “скан-рамку” после распознавания */
+    #ui.found #reticleWrap { opacity: .25; }
+    #ui.found #scanLine { opacity: .0; animation: none; }
   </style>
 </head>
 
 <body>
-  <div id="overlay">
-    <div id="hint">
-      <div><b>Наведите камеру на маркер</b></div>
-      <div style="margin-top:6px;opacity:.95">
-        1 палец — перемещение • 2 пальца — масштаб и вращение
+  <!-- UI поверх камеры/сцены -->
+  <div id="ui">
+    <div id="topbar">
+      <div id="title">
+        <b>WebAR на A-Frame + MindAR</b>
+        <span>Практика №7 • image tracking</span>
       </div>
-      <div id="chip">Статус: ждём маркер…</div>
+
+      <div id="statusPill">
+        <span id="dot" class="dot"></span>
+        <span id="chip">Ждём маркер…</span>
+      </div>
+    </div>
+
+    <div id="center">
+      <div id="reticleWrap" aria-hidden="true">
+        <div id="scanLine"></div>
+        <div class="corner c1"></div>
+        <div class="corner c2"></div>
+        <div class="corner c3"></div>
+        <div class="corner c4"></div>
+      </div>
+    </div>
+
+    <div id="bottom">
+      <div id="card">
+        <b>Как управлять моделью</b>
+        <div class="row">
+          <div>📷 Наведи камеру на маркер и держи его в рамке 1–2 секунды.</div>
+          <div>☝️ <span class="kbd">1 палец</span> — перемещение</div>
+          <div>✌️ <span class="kbd">2 пальца</span> — масштаб и вращение</div>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -79,15 +244,29 @@
   </a-scene>
 
   <script>
+    const ui = document.getElementById("ui");
     const chip = document.getElementById("chip");
+    const dot = document.getElementById("dot");
     const markerRoot = document.getElementById("markerRoot");
     const obj = document.getElementById("object");
 
-    markerRoot.addEventListener("targetFound", () => chip.textContent = "Статус: маркер распознан ✅");
-    markerRoot.addEventListener("targetLost",  () => chip.textContent = "Статус: маркер потерян…");
+    // События MindAR: targetFound / targetLost :contentReference[oaicite:2]{index=2}
+    markerRoot.addEventListener("targetFound", () => {
+      chip.textContent = "Маркер распознан ✅";
+      dot.classList.remove("bad");
+      dot.classList.add("ok");
+      ui.classList.add("found");
+    });
+
+    markerRoot.addEventListener("targetLost", () => {
+      chip.textContent = "Маркер потерян…";
+      dot.classList.remove("ok");
+      dot.classList.add("bad");
+      ui.classList.remove("found");
+    });
 
     let mode = "none";
-    let lastX = 0, lastY = 0; 
+    let lastX = 0, lastY = 0;
     let startDist = 0;
     let startScale = 1;
     let startAngle = 0;
@@ -109,6 +288,7 @@
 
     const MOVE_FACTOR = 0.0015;
 
+    // Чуть надёжнее для iOS: passive:false + preventDefault, чтобы страница не пыталась скроллиться/зумиться
     document.addEventListener("touchstart", (e) => {
       if (!obj) return;
 
@@ -125,10 +305,11 @@
         startAngle = angle(e.touches[0], e.touches[1]);
         startRotY = obj.object3D.rotation.y * 180 / Math.PI;
       }
-    }, { passive: true });
+    }, { passive: false });
 
     document.addEventListener("touchmove", (e) => {
       if (!obj) return;
+      e.preventDefault();
 
       if (mode === "drag" && e.touches.length === 1) {
         const x = e.touches[0].clientX;
@@ -153,7 +334,7 @@
         const rotY = (startRotY + delta) * Math.PI / 180;
         obj.object3D.rotation.y = rotY;
       }
-    }, { passive: true });
+    }, { passive: false });
 
     document.addEventListener("touchend", (e) => {
       if (e.touches.length === 0) mode = "none";
@@ -162,8 +343,7 @@
         lastX = e.touches[0].clientX;
         lastY = e.touches[0].clientY;
       }
-    }, { passive: true });
+    }, { passive: false });
   </script>
 </body>
 </html>
-
