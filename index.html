@@ -1,3 +1,4 @@
+Артём 😏, [20.12.2025 0:14]
 <!doctype html>
 <html lang="ru">
 <head>
@@ -129,7 +130,8 @@
 
     document.addEventListener("touchmove", (e) => {
       if (!obj) return;
-=== "drag" && e.touches.length === 1) {
+
+      if (mode === "drag" && e.touches.length === 1) {
         const x = e.touches[0].clientX;
         const y = e.touches[0].clientY;
 
@@ -165,4 +167,3 @@
   </script>
 </body>
 </html>
-      if (mode
