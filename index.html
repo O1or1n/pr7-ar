@@ -218,12 +218,13 @@
   </div>
 
   <a-scene
-    mindar-image="imageTargetSrc: targets.mind; autoStart: true; uiScanning: false; uiLoading: false;"
-    color-space="sRGB"
-    renderer="colorManagement: true; physicallyCorrectLights: true;"
-    vr-mode-ui="enabled: false"
-    device-orientation-permission-ui="enabled: true"
-  >
+  mindar-image="imageTargetSrc: targets.mind; autoStart: true; uiScanning: false; uiLoading: false;"
+  color-space="sRGB"
+  background="transparent: true"
+  renderer="alpha: true; colorManagement: true; physicallyCorrectLights: true;"
+  vr-mode-ui="enabled: false"
+  device-orientation-permission-ui="enabled: true"
+>
     <a-camera position="0 0 0" look-controls="enabled: false"></a-camera>
 
     <a-entity light="type: ambient; intensity: 0.9"></a-entity>
@@ -347,3 +348,4 @@
   </script>
 </body>
 </html>
+
