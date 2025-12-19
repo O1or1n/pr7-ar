@@ -5,22 +5,19 @@
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
   <title>AR Web (A-Frame + MindAR)</title>
 
-  <!-- ВАЖНО: порядок подключений как в документации MindAR:
-       1) mindar core  2) aframe  3) mindar aframe extension -->
-  <script src="https://cdn.jsdelivr.net/gh/hiukim/mind-ar-js@1.2.5/dist/mindar-image.prod.js"></script>
-  <script src="https://aframe.io/releases/1.5.0/aframe.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/gh/hiukim/mind-ar-js@1.2.5/dist/mindar-image-aframe.prod.js"></script>
+  <!-- A-Frame -->
+  <script src="https://aframe.io/releases/1.7.1/aframe.min.js"></script>
+  <!-- MindAR (image tracking for A-Frame) -->
+  <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image-aframe.prod.js"></script>
 
   <style>
     html, body { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background:#000; font-family: -apple-system, system-ui, Segoe UI, Roboto, Arial; }
-
     #hud {
       position: fixed; left: 0; right: 0; top: 0;
       padding: 10px 12px; color: #fff; z-index: 10;
       background: linear-gradient(180deg, rgba(0,0,0,.55), rgba(0,0,0,0));
       pointer-events: none; font-size: 14px; line-height: 1.35;
     }
-
     #loading, #scanning {
       position: fixed; inset: 0; z-index: 20;
       display: flex; align-items: center; justify-content: center;
@@ -29,110 +26,59 @@
     }
     #loading.hidden, #scanning.hidden { display: none; }
     .panel { padding: 14px 16px; border-radius: 12px; background: rgba(0,0,0,.55); max-width: 340px; }
-
-    /* Панель кнопок (ПК и мобила — работает везде) */
-    #controls {
-      position: fixed; right: 12px; bottom: 12px; z-index: 30;
-      display: grid; gap: 8px;
-      grid-template-columns: repeat(3, 44px);
-      user-select: none;
-      -webkit-user-select: none;
-      touch-action: none;
-    }
-    #controls button {
-      width: 44px; height: 44px;
-      border-radius: 12px;
-      border: 1px solid rgba(255,255,255,.25);
-      background: rgba(0,0,0,.55);
-      color: #fff; font-size: 16px;
-      cursor: pointer;
-    }
-    #controls .wide { grid-column: span 3; height: 40px; font-size: 13px; }
-
     .hint {
       position: fixed; left: 12px; right: 12px; bottom: 12px; z-index: 10;
       color: #fff; background: rgba(0,0,0,.45);
       padding: 10px 12px; border-radius: 12px;
       font-size: 13px; pointer-events: none;
-      max-width: 520px;
     }
-    .kbd { padding: 1px 6px; border-radius: 6px; background: rgba(255,255,255,.14); }
   </style>
 
   <script>
-    // ========= Глобальное "выбран ли объект" =========
-    let SELECTED = null;
-
-    function setSelected(el, on) {
-      SELECTED = on ? el : null;
-      document.getElementById('state').textContent = on
-        ? 'Объект выбран (управление активно)'
-        : 'Объект не выбран';
-
-      if (el) {
-        el.setAttribute('animation__pulse', on
-          ? 'property: scale; to: 1.06 1.06 1.06; dur: 120; dir: alternate; loop: 2; easing: easeOutQuad'
-          : 'property: scale; to: 1 1 1; dur: 0'
-        );
-      }
-    }
-
-    function nudge(dx, dz) {
-      if (!SELECTED) return;
-      const o = SELECTED.object3D;
-      o.position.x += dx;
-      o.position.z += dz;
-    }
-    function rotateY(dRad) {
-      if (!SELECTED) return;
-      SELECTED.object3D.rotation.y += dRad;
-    }
-    function scaleBy(k) {
-      if (!SELECTED) return;
-      const o = SELECTED.object3D;
-      const s = o.scale.x * k;
-      const clamped = Math.max(0.25, Math.min(2.5, s));
-      o.scale.set(clamped, clamped, clamped);
-    }
-    function resetTransform() {
-      if (!SELECTED) return;
-      const o = SELECTED.object3D;
-      o.position.set(0, 0, 0);
-      o.rotation.set(0, 0, 0);
-      o.scale.set(0.6, 0.6, 0.6);
-    }
-
-    // ========= Жесты на мобиле (1 палец — move, 2 пальца — scale+rotate) =========
+    // 1 палец — перемещение, 2 пальца — масштаб + поворот
     AFRAME.registerComponent('touch-manipulate', {
       schema: { minScale: {default: 0.25}, maxScale: {default: 2.5}, moveFactor: {default: 0.0018} },
+
       init: function () {
+        this.active = false;
+
         this.startPos = new THREE.Vector3();
         this.startRotY = 0;
         this.startScale = new THREE.Vector3();
-        this.t1 = {x:0,y:0}; this.t2 = {x:0,y:0};
-        this.startDist = 0; this.startAngle = 0;
-        this.mode = null;
 
-        // Тап/клик — выбрать объект
+        this.t1 = {x:0,y:0};
+        this.t2 = {x:0,y:0};
+        this.startDist = 0;
+        this.startAngle = 0;
+        this.mode = null; // 'one' | 'two'
+
+        // Тап по модели — включить/выключить управление
         this.el.addEventListener('click', () => {
-          const isOn = (SELECTED !== this.el);
-          setSelected(this.el, isOn);
+          this.active = !this.active;
+          document.getElementById('state').textContent =
+            this.active ? 'Объект выбран (жесты активны)' : 'Объект не выбран';
+
+          this.el.setAttribute('animation__pulse', this.active
+            ? 'property: scale; to: 1.06 1.06 1.06; dur: 120; dir: alternate; loop: 2; easing: easeOutQuad'
+            : 'property: scale; to: 1 1 1; dur: 0'
+          );
         });
 
+        // Ловим touch на canvas (на мобильных это надёжнее)
         const sceneEl = this.el.sceneEl;
         sceneEl.addEventListener('renderstart', () => {
           const canvas = sceneEl.canvas;
           canvas.style.touchAction = 'none';
 
-          canvas.addEventListener('touchstart', (e) => this.onStart(e), { passive: false });
-          canvas.addEventListener('touchmove',  (e) => this.onMove(e),  { passive: false });
-          canvas.addEventListener('touchend',   (e) => this.onEnd(e),   { passive: false });
-          canvas.addEventListener('touchcancel',(e) => this.onEnd(e),   { passive: false });
+          canvas.addEventListener('touchstart', this.onStart.bind(this), {passive:false});
+          canvas.addEventListener('touchmove',  this.onMove.bind(this),  {passive:false});
+          canvas.addEventListener('touchend',   this.onEnd.bind(this),   {passive:false});
+          canvas.addEventListener('touchcancel',this.onEnd.bind(this),   {passive:false});
         });
       },
 
       onStart: function (e) {
-        if (SELECTED !== this.el || !e.touches || e.touches.length === 0) return;
+        if (!this.active || !e.touches || e.touches.length === 0) return;
         e.preventDefault();
 
         this.startPos.copy(this.el.object3D.position);
@@ -141,24 +87,32 @@
 
         if (e.touches.length === 1) {
           this.mode = 'one';
-          this.t1.x = e.touches[0].clientX; this.t1.y = e.touches[0].clientY;
+          this.t1.x = e.touches[0].clientX;
+          this.t1.y = e.touches[0].clientY;
+
         } else if (e.touches.length >= 2) {
           this.mode = 'two';
           this.t1.x = e.touches[0].clientX; this.t1.y = e.touches[0].clientY;
           this.t2.x = e.touches[1].clientX; this.t2.y = e.touches[1].clientY;
-          const dx = this.t2.x - this.t1.x, dy = this.t2.y - this.t1.y;
+
+          const dx = this.t2.x - this.t1.x;
+          const dy = this.t2.y - this.t1.y;
           this.startDist = Math.hypot(dx, dy);
           this.startAngle = Math.atan2(dy, dx);
         }
       },
 
       onMove: function (e) {
-        if (SELECTED !== this.el || !this.mode || !e.touches || e.touches.length === 0) return;
+        if (!this.active || !this.mode || !e.touches || e.touches.length === 0) return;
         e.preventDefault();
 
         if (this.mode === 'one' && e.touches.length === 1) {
-          const x = e.touches[0].clientX, y = e.touches[0].clientY;
-          const dx = x - this.t1.x, dy = y - this.t1.y;
+          const x = e.touches[0].clientX;
+          const y = e.touches[0].clientY;
+          const dx = x - this.t1.x;
+          const dy = y - this.t1.y;
+
+          // Движение по плоскости маркера: X и Z
           const nx = this.startPos.x + dx * this.data.moveFactor;
           const nz = this.startPos.z + (-dy) * this.data.moveFactor;
           this.el.object3D.position.set(nx, this.startPos.y, nz);
@@ -166,15 +120,19 @@
         } else if (this.mode === 'two' && e.touches.length >= 2) {
           const x1 = e.touches[0].clientX, y1 = e.touches[0].clientY;
           const x2 = e.touches[1].clientX, y2 = e.touches[1].clientY;
-          const dx = x2 - x1, dy = y2 - y1;
+
+          const dx = x2 - x1;
+          const dy = y2 - y1;
           const dist = Math.hypot(dx, dy);
           const angle = Math.atan2(dy, dx);
 
+          // Масштаб
           const k = dist / (this.startDist || dist);
           const raw = this.startScale.x * k;
           const s = THREE.MathUtils.clamp(raw, this.data.minScale, this.data.maxScale);
           this.el.object3D.scale.set(s, s, s);
 
+          // Поворот вокруг Y
           const dA = angle - this.startAngle;
           this.el.object3D.rotation.y = this.startRotY + dA;
         }
@@ -182,64 +140,6 @@
 
       onEnd: function () { this.mode = null; }
     });
-
-    // ========= Кнопки + клавиатура (ПК) =========
-    function bindControls() {
-      // Кнопки: делаем удержание (нажатие = движение пока держишь)
-      const step = 0.02;
-      const rot = 0.08;
-      let holdTimer = null;
-
-      const startHold = (fn) => {
-        if (holdTimer) clearInterval(holdTimer);
-        fn();
-        holdTimer = setInterval(fn, 35);
-      };
-      const stopHold = () => { if (holdTimer) clearInterval(holdTimer); holdTimer = null; };
-
-      const map = {
-        up:    () => nudge(0, -step),
-        down:  () => nudge(0,  step),
-        left:  () => nudge(-step, 0),
-        right: () => nudge( step, 0),
-        rotL:  () => rotateY( rot),
-        rotR:  () => rotateY(-rot),
-        scUp:  () => scaleBy(1.03),
-        scDn:  () => scaleBy(0.97),
-        reset: () => resetTransform()
-      };
-
-      document.querySelectorAll('#controls button[data-act]').forEach(btn => {
-        const act = btn.getAttribute('data-act');
-        const fn = map[act];
-
-        const down = (e) => { e.preventDefault(); if (!fn) return; (act === 'reset') ? fn() : startHold(fn); };
-        const up   = (e) => { e.preventDefault(); stopHold(); };
-
-        btn.addEventListener('mousedown', down);
-        btn.addEventListener('mouseup', up);
-        btn.addEventListener('mouseleave', up);
-        btn.addEventListener('touchstart', down, {passive:false});
-        btn.addEventListener('touchend', up, {passive:false});
-        btn.addEventListener('touchcancel', up, {passive:false});
-      });
-
-      // Клавиатура:
-      window.addEventListener('keydown', (e) => {
-        if (!SELECTED) return;
-        switch (e.key) {
-          case 'ArrowUp':    nudge(0, -step); break;
-          case 'ArrowDown':  nudge(0,  step); break;
-          case 'ArrowLeft':  nudge(-step, 0); break;
-          case 'ArrowRight': nudge( step, 0); break;
-          case 'q': case 'Q': rotateY( rot); break;
-          case 'e': case 'E': rotateY(-rot); break;
-          case '+': case '=': scaleBy(1.05); break;
-          case '-': case '_': scaleBy(0.95); break;
-          case 'r': case 'R': resetTransform(); break;
-        }
-      });
-    }
 
     window.addEventListener('DOMContentLoaded', () => {
       const loading = document.getElementById('loading');
@@ -254,10 +154,8 @@
       sceneEl.addEventListener('arError', () => {
         loading.classList.remove('hidden');
         loading.querySelector('.panel').innerHTML =
-          '<b>Ошибка запуска AR</b><br/>Проверь разрешение камеры и открой страницу в Safari/Chrome.';
+          '<b>Ошибка запуска AR</b><br/>Проверь камеру и открой в Safari.';
       });
-
-      bindControls();
     });
   </script>
 </head>
@@ -270,41 +168,23 @@
 
   <div id="loading">
     <div class="panel">
-      <b>Загрузка AR…</b><br/>
-      Разреши доступ к камере (Allow).
+      <b>Загрузка AR…</b><br/>Разреши доступ к камере (Allow).
     </div>
   </div>
 
   <div id="scanning" class="hidden">
     <div class="panel">
-      <b>Наведите камеру на маркер</b><br/>
-      Держите маркер в кадре 1–2 секунды.
+      <b>Наведите камеру на маркер</b><br/>Держите маркер в кадре 1–2 секунды.
     </div>
   </div>
 
   <div class="hint">
-    <b>Мобила:</b> тап по модели → выбрать • 1 палец — двигать • 2 пальца — масштаб+поворот<br/>
-    <b>ПК:</b> сначала кликни по модели → выбрать • стрелки — двигать • <span class="kbd">Q/E</span> — поворот • <span class="kbd">+/-</span> — масштаб • <span class="kbd">R</span> — reset
+    Тап по модели — выбрать/снять выбор • 1 палец — двигать • 2 пальца — масштаб + поворот
   </div>
 
-  <!-- КНОПКИ (ПК и мобила) -->
-  <div id="controls">
-    <button data-act="rotL">⟲</button>
-    <button data-act="up">↑</button>
-    <button data-act="rotR">⟳</button>
-
-    <button data-act="left">←</button>
-    <button data-act="down">↓</button>
-    <button data-act="right">→</button>
-
-    <button data-act="scDn">−</button>
-    <button data-act="reset" class="wide">Reset</button>
-    <button data-act="scUp">+</button>
-  </div>
-
-  <!-- КЛЮЧЕВОЕ ДЛЯ "НЕ ЧЁРНЫЙ ФОН": background transparent + renderer alpha -->
   <a-scene
     mindar-image="imageTargetSrc: ./targets.mind; uiScanning: #scanning; uiLoading: #loading;"
+    embedded
     background="transparent: true"
     renderer="alpha: true; colorManagement: true; physicallyCorrectLights: true"
     vr-mode-ui="enabled: false"
@@ -314,7 +194,7 @@
       <a-asset-item id="modelAsset" src="./model.glb"></a-asset-item>
     </a-assets>
 
-    <!-- Курсор для клика по объекту (ПК) -->
+    <!-- курсор нужен, чтобы клик/тап по модели работал -->
     <a-camera position="0 0 0"
       look-controls="enabled: false"
       cursor="rayOrigin: mouse"
@@ -325,8 +205,7 @@
     <a-entity light="type: directional; intensity: 0.8" position="0 1 1"></a-entity>
 
     <a-entity mindar-image-target="targetIndex: 0">
-      <a-entity id="model"
-        class="clickable"
+      <a-entity class="clickable"
         gltf-model="#modelAsset"
         position="0 0 0"
         rotation="0 0 0"
