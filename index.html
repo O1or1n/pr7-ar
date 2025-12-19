@@ -8,7 +8,7 @@
   <script src="https://aframe.io/releases/1.5.0/aframe.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image-aframe.prod.js"></script>
 
-  <!-- animation-mixer для анимаций glTF/GLB -->
+  <!-- ДОБАВИЛ: animation-mixer (aframe-extras) для проигрывания анимаций из .glb/.gltf -->
   <script src="https://cdn.jsdelivr.net/gh/donmccurdy/aframe-extras@v6.1.1/dist/aframe-extras.min.js"></script>
 
   <style>
@@ -24,31 +24,10 @@
       margin: 0;
       height: 100%;
       overflow: hidden;
-      background: transparent; /* важно: не красим фон в чёрный */
+      background: #000;
       font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial;
       -webkit-font-smoothing: antialiased;
       -moz-osx-font-smoothing: grayscale;
-    }
-
-    /* Камера (video) снизу, WebGL canvas сверху, UI поверх всего */
-    video {
-      position: fixed;
-      inset: 0;
-      width: 100%;
-      height: 100%;
-      object-fit: cover;
-      z-index: 0;
-      pointer-events: none; /* чтобы жесты не “съедались” видео */
-    }
-
-    a-scene {
-      position: fixed;
-      inset: 0;
-      z-index: 1;
-    }
-
-    a-scene, a-scene canvas {
-      background: transparent !important;
     }
 
     /* Оверлей: НЕ блокирует жесты по сцене */
@@ -78,7 +57,10 @@
       padding: 14px 14px 0 14px;
     }
 
-    #title { display: grid; gap: 2px; }
+    #title {
+      display: grid;
+      gap: 2px;
+    }
     #title b { font-size: 14px; letter-spacing: .2px; }
     #title span { font-size: 12px; color: var(--muted); }
 
@@ -106,11 +88,15 @@
       background: rgba(255,255,255,.35);
       box-shadow: 0 0 0 6px rgba(255,255,255,.06);
     }
-    .dot.ok { background: rgba(120,255,180,.85); box-shadow: 0 0 0 6px rgba(120,255,180,.12); }
-    .dot.bad { background: rgba(255,180,120,.85); box-shadow: 0 0 0 6px rgba(255,180,120,.12); }
+    .dot.ok { background: rgba(120, 255, 180, .85); box-shadow: 0 0 0 6px rgba(120, 255, 180, .12); }
+    .dot.bad { background: rgba(255, 180, 120, .85); box-shadow: 0 0 0 6px rgba(255, 180, 120, .12); }
 
-    /* Центр: “прицел” */
-    #center { display: grid; place-items: center; padding: 0 14px; }
+    /* Центр: “прицел” для маркера */
+    #center {
+      display: grid;
+      place-items: center;
+      padding: 0 14px;
+    }
 
     #reticleWrap {
       width: min(70vw, 320px);
@@ -123,6 +109,7 @@
       -webkit-backdrop-filter: blur(6px);
     }
 
+    /* “уголки” рамки */
     .corner {
       position: absolute;
       width: 34px; height: 34px;
@@ -135,6 +122,7 @@
     .c3 { bottom: 10px; left: 10px; border-right: none; border-top: none; }
     .c4 { bottom: 10px; right: 10px; border-left: none; border-top: none; }
 
+    /* “скан-линия” */
     #scanLine {
       position: absolute;
       left: 12px; right: 12px;
@@ -151,7 +139,12 @@
       100% { transform: translateY(0); opacity: .55; }
     }
 
-    #bottom { padding: 0 14px 14px 14px; display: grid; place-items: center; }
+    /* Нижняя карточка подсказок */
+    #bottom {
+      padding: 0 14px 14px 14px;
+      display: grid;
+      place-items: center;
+    }
 
     #card {
       width: min(92vw, 560px);
@@ -184,13 +177,17 @@
       transform: translateY(-1px);
     }
 
-    /* После распознавания делаем рамку менее заметной */
+    /* Скрываем “скан-рамку” после распознавания */
     #ui.found #reticleWrap { opacity: .25; }
-    #ui.found #scanLine { opacity: 0; animation: none; }
+    #ui.found #scanLine { opacity: .0; animation: none; }
+
+    /* На всякий: принудительно прозрачный фон канваса */
+    a-scene, a-scene canvas { background: transparent !important; }
   </style>
 </head>
 
 <body>
+  <!-- UI поверх камеры/сцены -->
   <div id="ui">
     <div id="topbar">
       <div id="title">
@@ -229,6 +226,7 @@
   <a-scene
     mindar-image="imageTargetSrc: targets.mind; autoStart: true; uiScanning: false; uiLoading: false;"
     color-space="sRGB"
+    background="transparent: true"
     renderer="alpha: true; colorManagement: true; physicallyCorrectLights: true;"
     vr-mode-ui="enabled: false"
     device-orientation-permission-ui="enabled: true"
@@ -259,8 +257,8 @@
     const dot = document.getElementById("dot");
     const markerRoot = document.getElementById("markerRoot");
     const obj = document.getElementById("object");
-    const sceneEl = document.querySelector("a-scene");
 
+    // События MindAR: targetFound / targetLost
     markerRoot.addEventListener("targetFound", () => {
       chip.textContent = "Маркер распознан ✅";
       dot.classList.remove("bad");
@@ -273,12 +271,6 @@
       dot.classList.remove("ok");
       dot.classList.add("bad");
       ui.classList.remove("found");
-    });
-
-    // КРИТИЧНО: делаем прозрачную очистку WebGL (alpha=0), чтобы не было чёрного фона
-    // WebGLRenderer.setClearColor(color, alpha) :contentReference[oaicite:2]{index=2}
-    sceneEl.addEventListener("renderstart", () => {
-      if (sceneEl.renderer) sceneEl.renderer.setClearColor(0x000000, 0);
     });
 
     let mode = "none";
